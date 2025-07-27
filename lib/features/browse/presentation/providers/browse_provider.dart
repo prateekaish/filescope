@@ -6,6 +6,7 @@ import 'package:filescope/features/browse/domain/repositories/file_system_reposi
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+// ... (Existing code for provider and BrowseState class)
 // 1. Provider for the repository implementation
 final fileSystemRepoProvider = Provider<FileSystemRepository>((ref) {
   return FileSystemRepositoryImpl();
@@ -52,7 +53,9 @@ class BrowseController extends StateNotifier<BrowseState> {
   BrowseController(this._repository) : super(BrowseState()) {
     _init();
   }
-
+  
+  // ... (Existing _init, loadDirectory, deleteEntity, renameEntity, navigateTo, canNavigateBack, navigateBack methods)
+  
   Future<void> _init() async {
     try {
       await _repository.requestPermissions();
@@ -100,6 +103,17 @@ class BrowseController extends StateNotifier<BrowseState> {
   Future<void> renameEntity(FileSystemEntity entity, String newName) async {
     try {
       await _repository.renameEntity(entity, newName);
+      await loadDirectory(state.currentPath); // Refresh list
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+  
+  // New method for this commit
+  Future<void> createDirectory(String folderName) async {
+    if (state.currentPath.isEmpty) return;
+    try {
+      await _repository.createDirectory(state.currentPath, folderName);
       await loadDirectory(state.currentPath); // Refresh list
     } catch (e) {
       state = state.copyWith(error: e.toString());

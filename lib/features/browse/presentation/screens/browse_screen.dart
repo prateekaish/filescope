@@ -38,9 +38,15 @@ class BrowseScreen extends ConsumerWidget {
             : null,
       ),
       body: _buildBody(context, state, controller),
+      // Add the FloatingActionButton for this commit
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showCreateFolderDialog(context, controller),
+        child: const Icon(Icons.create_new_folder_outlined),
+      ),
     );
   }
-
+  
+  // ... (Existing _buildBody, _showOptionsSheet, _showDetailsDialog, _showRenameDialog, _showDeleteConfirmationDialog methods)
   Widget _buildBody(BuildContext context, BrowseState state, BrowseController controller) {
     if (state.isLoading && state.entities.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -55,7 +61,7 @@ class BrowseScreen extends ConsumerWidget {
       );
     }
     
-    if (state.entities.isEmpty) {
+    if (state.entities.isEmpty && !state.isLoading) {
       return const Center(child: Text('This folder is empty.'));
     }
 
@@ -209,6 +215,40 @@ class BrowseScreen extends ConsumerWidget {
               onPressed: () {
                 controller.deleteEntity(entity);
                 Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  // New helper method for this commit
+  void _showCreateFolderDialog(BuildContext context, BrowseController controller) {
+    final textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Create New Folder'),
+          content: TextField(
+            controller: textController,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Folder name'),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            TextButton(
+              child: const Text('Create'),
+              onPressed: () {
+                final folderName = textController.text.trim();
+                if (folderName.isNotEmpty) {
+                  controller.createDirectory(folderName);
+                  Navigator.of(context).pop();
+                }
               },
             ),
           ],

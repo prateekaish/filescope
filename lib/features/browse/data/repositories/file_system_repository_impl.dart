@@ -5,16 +5,17 @@ import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
 class FileSystemRepositoryImpl implements FileSystemRepository {
+  // ... (existing code for requestPermissions, getEntities, deleteEntity, renameEntity)
 
   @override
   Future<void> requestPermissions() async {
     if (Platform.isAndroid) {
-        if (await Permission.manageExternalStorage.request().isGranted) {
-            return;
-        }
+      if (await Permission.manageExternalStorage.request().isGranted) {
+        return;
+      }
     }
     if (await Permission.storage.request().isDenied) {
-        throw Exception('Storage permissions are required to browse files.');
+      throw Exception('Storage permissions are required to browse files.');
     }
   }
 
@@ -80,6 +81,23 @@ class FileSystemRepositoryImpl implements FileSystemRepository {
       }
     } catch (e) {
       throw Exception('Failed to rename ${entity.name}. Error: $e');
+    }
+  }
+  
+  // New implementation for this commit
+  @override
+  Future<void> createDirectory(String currentPath, String folderName) async {
+    try {
+      final newDirPath = p.join(currentPath, folderName);
+      final newDir = Directory(newDirPath);
+
+      if (await newDir.exists()) {
+        throw Exception('A folder with this name already exists.');
+      }
+      
+      await newDir.create();
+    } catch (e) {
+      throw Exception('Failed to create folder. Error: $e');
     }
   }
 }
