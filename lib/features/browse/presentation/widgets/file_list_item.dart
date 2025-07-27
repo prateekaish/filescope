@@ -6,11 +6,13 @@ import 'package:intl/intl.dart';
 class FileListItem extends StatelessWidget {
   final FileSystemEntity file;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const FileListItem({
     super.key,
     required this.file,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
@@ -23,7 +25,7 @@ class FileListItem extends StatelessWidget {
         style: Theme.of(context).textTheme.bodySmall,
       ),
       onTap: onTap,
-      // TODO: Implement onLongPress for context menu (copy, move, share, etc.)
+      onLongPress: onLongPress,
     );
   }
 }

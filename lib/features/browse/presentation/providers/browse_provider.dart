@@ -1,4 +1,4 @@
-import 'dart:io'; // <-- ADD THIS LINE
+import 'dart:io';
 
 import 'package:filescope/features/browse/data/repositories/file_system_repository_impl.dart';
 import 'package:filescope/features/browse/domain/entities/file_system_entity.dart';
@@ -68,18 +68,41 @@ class BrowseController extends StateNotifier<BrowseState> {
   }
 
   Future<void> loadDirectory(String path) async {
+    // Keep existing data while loading for a smoother experience
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final entities = await _repository.getEntities(path);
-      final newHistory = List<String>.from(state.history)..add(state.currentPath);
+      // Only update history when navigating forward successfully
+      if (state.currentPath.isEmpty || path != state.currentPath) {
+        final newHistory = List<String>.from(state.history)..add(state.currentPath);
+        state = state.copyWith(history: newHistory);
+      }
       state = state.copyWith(
         isLoading: false,
         currentPath: path,
         entities: entities,
-        history: newHistory,
       );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
+    }
+  }
+
+  Future<void> deleteEntity(FileSystemEntity entity) async {
+    try {
+      await _repository.deleteEntity(entity);
+      await loadDirectory(state.currentPath); // Refresh list
+    } catch (e) {
+      // Propagate error to be shown in a SnackBar or Dialog
+      state = state.copyWith(error: e.toString());
+    }
+  }
+  
+  Future<void> renameEntity(FileSystemEntity entity, String newName) async {
+    try {
+      await _repository.renameEntity(entity, newName);
+      await loadDirectory(state.currentPath); // Refresh list
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
     }
   }
 
@@ -98,10 +121,10 @@ class BrowseController extends StateNotifier<BrowseState> {
 
   void navigateBack() {
     if (!canNavigateBack()) return;
+    
     final lastPath = state.history.last;
     final newHistory = List<String>.from(state.history)..removeLast();
     
-    // We avoid re-fetching data if not necessary, but for simplicity here we reload.
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       _repository.getEntities(lastPath).then((entities) {

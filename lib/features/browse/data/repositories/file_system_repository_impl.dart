@@ -8,14 +8,11 @@ class FileSystemRepositoryImpl implements FileSystemRepository {
 
   @override
   Future<void> requestPermissions() async {
-    // On modern Android, MANAGE_EXTERNAL_STORAGE is required for broad access.
-    // This will open system settings for the user to grant the permission.
     if (Platform.isAndroid) {
         if (await Permission.manageExternalStorage.request().isGranted) {
             return;
         }
     }
-    // For other platforms or if the above fails, check standard storage perm.
     if (await Permission.storage.request().isDenied) {
         throw Exception('Storage permissions are required to browse files.');
     }
@@ -45,7 +42,6 @@ class FileSystemRepositoryImpl implements FileSystemRepository {
       );
     }
     
-    // Sort directories first, then by name
     entities.sort((a, b) {
       if (a.isDirectory && !b.isDirectory) return -1;
       if (!a.isDirectory && b.isDirectory) return 1;
@@ -53,5 +49,37 @@ class FileSystemRepositoryImpl implements FileSystemRepository {
     });
 
     return entities;
+  }
+
+  @override
+  Future<void> deleteEntity(FileSystemEntity entity) async {
+    try {
+      if (entity.isDirectory) {
+        final dir = Directory(entity.path);
+        await dir.delete(recursive: true);
+      } else {
+        final file = File(entity.path);
+        await file.delete();
+      }
+    } catch (e) {
+      // Re-throw with a more user-friendly message
+      throw Exception('Failed to delete ${entity.name}. Error: $e');
+    }
+  }
+
+  @override
+  Future<void> renameEntity(FileSystemEntity entity, String newName) async {
+    try {
+      final newPath = p.join(p.dirname(entity.path), newName);
+      if (entity.isDirectory) {
+        final dir = Directory(entity.path);
+        await dir.rename(newPath);
+      } else {
+        final file = File(entity.path);
+        await file.rename(newPath);
+      }
+    } catch (e) {
+      throw Exception('Failed to rename ${entity.name}. Error: $e');
+    }
   }
 }
