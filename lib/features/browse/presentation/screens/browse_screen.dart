@@ -1,5 +1,6 @@
 import 'package:filescope/core/utils/file_helpers.dart';
 import 'package:filescope/features/browse/domain/entities/file_system_entity.dart';
+import 'package:filescope/features/browse/domain/repositories/file_system_repository.dart'; // Added this import
 import 'package:filescope/features/browse/presentation/providers/browse_provider.dart';
 import 'package:filescope/features/browse/presentation/widgets/file_list_item.dart';
 import 'package:filescope/features/browse/presentation/widgets/folder_list_item.dart';
@@ -25,18 +26,16 @@ class BrowseScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: _buildAppBar(context, state, controller),
-      body: _buildBody(context, state, controller),
-      floatingActionButton: state.isSelectionMode
-          ? null
-          : FloatingActionButton(
-              onPressed: () => _showCreateFolderDialog(context, controller),
-              child: const Icon(Icons.create_new_folder_outlined),
-            ),
+      body: _buildBody(context, state, controller, ref), // Pass ref here
+      floatingActionButton:
+          _buildFloatingActionButton(context, state, controller),
     );
   }
 
-  AppBar _buildAppBar(BuildContext context, BrowseState state, BrowseController controller) {
+  AppBar _buildAppBar(
+      BuildContext context, BrowseState state, BrowseController controller) {
     if (state.isSelectionMode) {
+      final allSelected = state.selectedPaths.length == state.entities.length && state.entities.isNotEmpty;
       return AppBar(
         leading: IconButton(
           icon: const Icon(Icons.close),
@@ -45,18 +44,42 @@ class BrowseScreen extends ConsumerWidget {
         title: Text('${state.selectedPaths.length} selected'),
         actions: [
           IconButton(
+            icon: Icon(allSelected ? Icons.deselect_outlined : Icons.select_all),
+            tooltip: allSelected ? 'Deselect All' : 'Select All',
+            onPressed: () => controller.toggleSelectAll(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy_outlined),
+            tooltip: 'Copy',
+            onPressed: () => controller.copyToClipboard(isCopy: true),
+          ),
+          IconButton(
+            icon: const Icon(Icons.drive_file_move_outlined),
+            tooltip: 'Move',
+            onPressed: () => controller.copyToClipboard(isCopy: false),
+          ),
+          IconButton(
             icon: const Icon(Icons.delete_outline),
-            onPressed: () {
-              // TODO: Add a confirmation dialog for batch delete
-              controller.deleteSelectedItems();
-            },
+            tooltip: 'Delete',
+            onPressed: () => _showBatchDeleteConfirmationDialog(context, controller, state.selectedPaths.length),
           ),
         ],
+      );
+    } else if (state.isPasting) {
+      return AppBar(
+        title: Text('Pasting ${state.clipboardPaths.length} items'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          tooltip: 'Cancel Paste',
+          onPressed: () => controller.clearClipboard(),
+        ),
       );
     } else {
       return AppBar(
         title: Text(
-          state.currentPath.isEmpty ? 'FileScope' : state.currentPath.split('/').last,
+          state.currentPath.isEmpty
+              ? 'FileScope'
+              : state.currentPath.split('/').last,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         leading: controller.canNavigateBack()
@@ -69,7 +92,26 @@ class BrowseScreen extends ConsumerWidget {
     }
   }
 
-  Widget _buildBody(BuildContext context, BrowseState state, BrowseController controller) {
+  Widget? _buildFloatingActionButton(
+      BuildContext context, BrowseState state, BrowseController controller) {
+    if (state.isPasting) {
+      return FloatingActionButton.extended(
+        onPressed: () => controller.pasteFromClipboard(),
+        label: const Text('Paste Here'),
+        icon: const Icon(Icons.content_paste_go),
+      );
+    } else if (!state.isSelectionMode) {
+      return FloatingActionButton(
+        onPressed: () => _showCreateFolderDialog(context, controller),
+        child: const Icon(Icons.create_new_folder_outlined),
+      );
+    }
+    return null;
+  }
+
+  // ref is now passed as a parameter
+  Widget _buildBody(
+      BuildContext context, BrowseState state, BrowseController controller, WidgetRef ref) {
     if (state.isLoading && state.entities.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -82,7 +124,7 @@ class BrowseScreen extends ConsumerWidget {
         ),
       );
     }
-    
+
     if (state.entities.isEmpty && !state.isLoading) {
       return const Center(child: Text('This folder is empty.'));
     }
@@ -109,8 +151,18 @@ class BrowseScreen extends ConsumerWidget {
                 }
               }
 
-              void handleLongPress() {
-                controller.toggleSelection(entity.path);
+              void handleItemLongPress() {
+                  controller.toggleSelection(entity.path);
+              }
+              
+              void handleOptionsLongPress() {
+                if (!state.isSelectionMode) {
+                  // Pass ref to the options sheet
+                  _showOptionsSheet(context, entity, controller, ref);
+                } else {
+                  // Still allow selection toggling on long press in selection mode
+                  controller.toggleSelection(entity.path);
+                }
               }
 
               if (entity.isDirectory) {
@@ -118,14 +170,14 @@ class BrowseScreen extends ConsumerWidget {
                   folder: entity,
                   isSelected: isSelected,
                   onTap: handleTap,
-                  onLongPress: handleLongPress,
+                  onLongPress: handleOptionsLongPress,
                 );
               } else {
                 return FileListItem(
                   file: entity,
                   isSelected: isSelected,
                   onTap: handleTap,
-                  onLongPress: handleLongPress,
+                  onLongPress: handleOptionsLongPress,
                 );
               }
             },
@@ -142,7 +194,9 @@ class BrowseScreen extends ConsumerWidget {
     );
   }
 
-  void _showOptionsSheet(BuildContext context, FileSystemEntity entity, BrowseController controller) {
+  // ref is now passed as a parameter
+  void _showOptionsSheet(BuildContext context, FileSystemEntity entity,
+      BrowseController controller, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
       builder: (context) {
@@ -153,7 +207,8 @@ class BrowseScreen extends ConsumerWidget {
               title: const Text('Details'),
               onTap: () {
                 Navigator.pop(context);
-                _showDetailsDialog(context, entity);
+                // Use the passed-in ref here
+                _showDetailsDialog(context, entity, ref.read(fileSystemRepoProvider));
               },
             ),
             ListTile(
@@ -178,7 +233,12 @@ class BrowseScreen extends ConsumerWidget {
     );
   }
 
-  void _showDetailsDialog(BuildContext context, FileSystemEntity entity) {
+  void _showDetailsDialog(BuildContext context, FileSystemEntity entity, FileSystemRepository repo) async {
+    int? itemCount;
+    if (entity.isDirectory) {
+      itemCount = await repo.getDirectorySize(entity.path);
+    }
+
     showDialog(
       context: context,
       builder: (context) {
@@ -194,9 +254,13 @@ class BrowseScreen extends ConsumerWidget {
               const SizedBox(height: 8),
               Text('Type: ${entity.isDirectory ? 'Folder' : 'File'}'),
               const SizedBox(height: 8),
-              if (!entity.isDirectory) Text('Size: ${formatBytes(entity.size, 2)}'),
+              if (entity.isDirectory)
+                Text('Items: ${itemCount ?? "..."}')
+              else
+                Text('Size: ${formatBytes(entity.size, 2)}'),
               const SizedBox(height: 8),
-              Text('Modified: ${DateFormat.yMMMd().add_jm().format(entity.modified)}'),
+              Text(
+                  'Modified: ${DateFormat.yMMMd().add_jm().format(entity.modified)}'),
             ],
           ),
           actions: [
@@ -210,7 +274,8 @@ class BrowseScreen extends ConsumerWidget {
     );
   }
 
-  void _showRenameDialog(BuildContext context, FileSystemEntity entity, BrowseController controller) {
+  void _showRenameDialog(BuildContext context, FileSystemEntity entity,
+      BrowseController controller) {
     final textController = TextEditingController(text: entity.name);
     showDialog(
       context: context,
@@ -240,13 +305,15 @@ class BrowseScreen extends ConsumerWidget {
     );
   }
 
-  void _showDeleteConfirmationDialog(BuildContext context, FileSystemEntity entity, BrowseController controller) {
+  void _showDeleteConfirmationDialog(BuildContext context,
+      FileSystemEntity entity, BrowseController controller) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('Delete Confirmation'),
-          content: Text('Are you sure you want to delete "${entity.name}"? This action cannot be undone.'),
+          content: Text(
+              'Are you sure you want to delete "${entity.name}"? This action cannot be undone.'),
           actions: [
             TextButton(
               child: const Text('Cancel'),
@@ -265,7 +332,34 @@ class BrowseScreen extends ConsumerWidget {
     );
   }
   
-  void _showCreateFolderDialog(BuildContext context, BrowseController controller) {
+  void _showBatchDeleteConfirmationDialog(BuildContext context, BrowseController controller, int count) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete Confirmation'),
+          content: Text(
+              'Are you sure you want to delete $count items? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            TextButton(
+              child: Text('Delete', style: TextStyle(color: Colors.red)),
+              onPressed: () {
+                controller.deleteSelectedItems();
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showCreateFolderDialog(
+      BuildContext context, BrowseController controller) {
     final textController = TextEditingController();
     showDialog(
       context: context,

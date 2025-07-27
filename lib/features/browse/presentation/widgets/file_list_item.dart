@@ -23,7 +23,7 @@ class FileListItem extends StatelessWidget {
       tileColor: isSelected ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3) : null,
       leading: isSelected
           ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
-          : const Icon(Icons.description_outlined),
+          : Icon(getIconForFile(file.name)),
       title: Text(file.name),
       subtitle: Text(
         '${formatBytes(file.size, 2)} • ${DateFormat.yMMMd().format(file.modified)}',

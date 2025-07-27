@@ -1,3 +1,5 @@
+import 'dart:io';
+
 class FileSystemEntity {
   final String path;
   final String name;
@@ -12,4 +14,10 @@ class FileSystemEntity {
     required this.size,
     required this.modified,
   });
+
+  // Corrected the method call by removing the 'followLinks' parameter
+  static Future<FileSystemEntityType> type(String path) {
+    // This calls the static method from dart:io's FileSystemEntity
+    return FileSystemEntity.type(path);
+  }
 }

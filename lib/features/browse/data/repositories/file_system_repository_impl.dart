@@ -5,8 +5,6 @@ import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 
 class FileSystemRepositoryImpl implements FileSystemRepository {
-  // ... (existing code for requestPermissions, getEntities, deleteEntity, renameEntity)
-
   @override
   Future<void> requestPermissions() async {
     if (Platform.isAndroid) {
@@ -63,7 +61,6 @@ class FileSystemRepositoryImpl implements FileSystemRepository {
         await file.delete();
       }
     } catch (e) {
-      // Re-throw with a more user-friendly message
       throw Exception('Failed to delete ${entity.name}. Error: $e');
     }
   }
@@ -84,7 +81,6 @@ class FileSystemRepositoryImpl implements FileSystemRepository {
     }
   }
   
-  // New implementation for this commit
   @override
   Future<void> createDirectory(String currentPath, String folderName) async {
     try {
@@ -99,5 +95,67 @@ class FileSystemRepositoryImpl implements FileSystemRepository {
     } catch (e) {
       throw Exception('Failed to create folder. Error: $e');
     }
+  }
+
+  @override
+  Future<void> copyEntity(String sourcePath, String destinationPath) async {
+    final newPath = p.join(destinationPath, p.basename(sourcePath));
+    // No change needed here, it now correctly calls the method on our custom entity
+    final sourceType = await FileSystemEntity.type(sourcePath);
+
+    if (sourceType == FileSystemEntityType.directory) {
+      await _copyDirectory(Directory(sourcePath), Directory(newPath));
+    } else if (sourceType == FileSystemEntityType.file) {
+      await File(sourcePath).copy(newPath);
+    }
+  }
+
+  Future<void> _copyDirectory(Directory source, Directory destination) async {
+    await destination.create(recursive: true);
+    await for (var entity in source.list(recursive: false)) {
+      final newPath = p.join(destination.path, p.basename(entity.path));
+      if (entity is File) {
+        await entity.copy(newPath);
+      } else if (entity is Directory) {
+        await _copyDirectory(entity, Directory(newPath));
+      }
+    }
+  }
+
+  @override
+  Future<void> moveEntity(String sourcePath, String destinationPath) async {
+    try {
+      final newPath = p.join(destinationPath, p.basename(sourcePath));
+      // No change needed here
+      final sourceType = await FileSystemEntity.type(sourcePath);
+
+      if (sourceType == FileSystemEntityType.directory) {
+        await Directory(sourcePath).rename(newPath);
+      } else if (sourceType == FileSystemEntityType.file) {
+        await File(sourcePath).rename(newPath);
+      }
+    } catch (e) {
+      if (e is FileSystemException) {
+        await copyEntity(sourcePath, destinationPath);
+        // No change needed here
+        final sourceType = await FileSystemEntity.type(sourcePath);
+        if (sourceType == FileSystemEntityType.directory) {
+          await Directory(sourcePath).delete(recursive: true);
+        } else {
+          await File(sourcePath).delete();
+        }
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  @override
+  Future<int> getDirectorySize(String path) async {
+    final dir = Directory(path);
+    if (await dir.exists()) {
+      return (await dir.list().toList()).length;
+    }
+    return 0;
   }
 }

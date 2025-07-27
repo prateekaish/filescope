@@ -5,6 +5,7 @@ import 'package:filescope/features/browse/data/repositories/file_system_reposito
 import 'package:filescope/features/browse/domain/entities/file_system_entity.dart';
 import 'package:filescope/features/browse/domain/repositories/file_system_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 
 final fileSystemRepoProvider = Provider<FileSystemRepository>((ref) {
@@ -17,8 +18,12 @@ class BrowseState {
   final List<FileSystemEntity> entities;
   final String? error;
   final List<String> history;
+
   final bool isSelectionMode;
-  final Set<String> selectedPaths; // Use path as unique ID
+  final Set<String> selectedPaths;
+
+  final Set<String> clipboardPaths;
+  final bool isCopyOperation;
 
   BrowseState({
     this.isLoading = true,
@@ -28,7 +33,11 @@ class BrowseState {
     this.history = const [],
     this.isSelectionMode = false,
     this.selectedPaths = const {},
+    this.clipboardPaths = const {},
+    this.isCopyOperation = true,
   });
+
+  bool get isPasting => clipboardPaths.isNotEmpty;
 
   BrowseState copyWith({
     bool? isLoading,
@@ -38,6 +47,8 @@ class BrowseState {
     List<String>? history,
     bool? isSelectionMode,
     Set<String>? selectedPaths,
+    Set<String>? clipboardPaths,
+    bool? isCopyOperation,
     bool clearError = false,
   }) {
     return BrowseState(
@@ -48,6 +59,8 @@ class BrowseState {
       history: history ?? this.history,
       isSelectionMode: isSelectionMode ?? this.isSelectionMode,
       selectedPaths: selectedPaths ?? this.selectedPaths,
+      clipboardPaths: clipboardPaths ?? this.clipboardPaths,
+      isCopyOperation: isCopyOperation ?? this.isCopyOperation,
     );
   }
 }
@@ -59,18 +72,15 @@ class BrowseController extends StateNotifier<BrowseState> {
     _init();
   }
 
-  // UPDATED METHOD
   Future<void> _init() async {
     try {
       await _repository.requestPermissions();
-      // Define the standard public storage directory for Android.
       const String rootPath = '/storage/emulated/0';
       final Directory initialDir = Directory(rootPath);
 
       if (await initialDir.exists()) {
         await loadDirectory(initialDir.path);
       } else {
-        // Fallback in case the primary path doesn't exist on a specific device
         final Directory? fallbackDir = await getExternalStorageDirectory();
         if (fallbackDir != null) {
           await loadDirectory(fallbackDir.path);
@@ -143,6 +153,17 @@ class BrowseController extends StateNotifier<BrowseState> {
     );
   }
 
+  void toggleSelectAll() {
+    if (state.selectedPaths.length == state.entities.length) {
+      // If all are selected, deselect all
+      state = state.copyWith(selectedPaths: {});
+    } else {
+      // Otherwise, select all
+      final allPaths = state.entities.map((e) => e.path).toSet();
+      state = state.copyWith(selectedPaths: allPaths);
+    }
+  }
+
   void clearSelection() {
     state = state.copyWith(
       selectedPaths: {},
@@ -152,11 +173,11 @@ class BrowseController extends StateNotifier<BrowseState> {
 
   Future<void> deleteSelectedItems() async {
     final pathsToDelete = List<FileSystemEntity>.from(
-      state.entities.where((e) => state.selectedPaths.contains(e.path))
-    );
+        state.entities.where((e) => state.selectedPaths.contains(e.path)));
 
     try {
-      await Future.wait(pathsToDelete.map((entity) => _repository.deleteEntity(entity)));
+      await Future.wait(
+          pathsToDelete.map((entity) => _repository.deleteEntity(entity)));
       clearSelection();
       await loadDirectory(state.currentPath);
     } catch (e) {
@@ -164,11 +185,51 @@ class BrowseController extends StateNotifier<BrowseState> {
     }
   }
 
-  void navigateTo(FileSystemEntity entity) {
+  void copyToClipboard({required bool isCopy}) {
+    if (state.selectedPaths.isEmpty) return;
+    state = state.copyWith(
+      clipboardPaths: state.selectedPaths,
+      isCopyOperation: isCopy,
+    );
+    clearSelection();
+  }
+
+  void clearClipboard() {
+    state = state.copyWith(clipboardPaths: {});
+  }
+
+  Future<void> pasteFromClipboard() async {
+    if (state.clipboardPaths.isEmpty || state.currentPath.isEmpty) return;
+
+    final destinationPath = state.currentPath;
+    final sources = Set<String>.from(state.clipboardPaths);
+
+    clearClipboard();
+
+    try {
+      final futures = sources.map((sourcePath) {
+        if (state.isCopyOperation) {
+          return _repository.copyEntity(sourcePath, destinationPath);
+        } else {
+          return _repository.moveEntity(sourcePath, destinationPath);
+        }
+      });
+      await Future.wait(futures);
+      await loadDirectory(destinationPath);
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+    }
+  }
+
+  Future<void> navigateTo(FileSystemEntity entity) async {
     if (entity.isDirectory) {
       loadDirectory(entity.path);
     } else {
-      print("Tapped on file: ${entity.name}");
+      // Open the file
+      final result = await OpenFile.open(entity.path);
+      if (result.type != ResultType.done) {
+        state = state.copyWith(error: result.message);
+      }
     }
   }
 
@@ -196,7 +257,8 @@ class BrowseController extends StateNotifier<BrowseState> {
   }
 }
 
-final browseProvider = StateNotifierProvider<BrowseController, BrowseState>((ref) {
+final browseProvider =
+    StateNotifierProvider<BrowseController, BrowseState>((ref) {
   final repository = ref.watch(fileSystemRepoProvider);
   return BrowseController(repository);
 });
