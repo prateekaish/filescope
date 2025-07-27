@@ -1,6 +1,6 @@
 import 'package:filescope/core/utils/file_helpers.dart';
 import 'package:filescope/features/browse/domain/entities/file_system_entity.dart';
-import 'package:filescope/features/browse/domain/repositories/file_system_repository.dart'; // Added this import
+import 'package:filescope/features/browse/domain/repositories/file_system_repository.dart';
 import 'package:filescope/features/browse/presentation/providers/browse_provider.dart';
 import 'package:filescope/features/browse/presentation/widgets/file_list_item.dart';
 import 'package:filescope/features/browse/presentation/widgets/folder_list_item.dart';
@@ -26,7 +26,7 @@ class BrowseScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: _buildAppBar(context, state, controller),
-      body: _buildBody(context, state, controller, ref), // Pass ref here
+      body: _buildBody(context, state, controller, ref),
       floatingActionButton:
           _buildFloatingActionButton(context, state, controller),
     );
@@ -75,21 +75,80 @@ class BrowseScreen extends ConsumerWidget {
         ),
       );
     } else {
+      // MODIFIED: The title is now the breadcrumbs widget
       return AppBar(
-        title: Text(
-          state.currentPath.isEmpty
-              ? 'FileScope'
-              : state.currentPath.split('/').last,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+        title: _buildBreadcrumbs(context, state, controller),
         leading: controller.canNavigateBack()
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => controller.navigateBack(),
               )
             : null,
+        titleSpacing: 0, // Remove default spacing
       );
     }
+  }
+
+  // New breadcrumbs widget
+  Widget _buildBreadcrumbs(BuildContext context, BrowseState state, BrowseController controller) {
+    if (state.currentPath.isEmpty) {
+      return const Text("FileScope", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold));
+    }
+    
+    // Split the path into segments
+    List<String> segments = state.currentPath.split('/').where((s) => s.isNotEmpty).toList();
+    // For root path "/storage/emulated/0", ensure "0" is not lost
+    if (state.currentPath == '/storage/emulated/0') {
+      segments = ['storage', 'emulated', '0'];
+    }
+
+    // Scrollable container for the breadcrumbs
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      reverse: true, // Start from the end
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: List.generate(segments.length, (index) {
+          // Reconstruct the path for each segment
+          String path = '/' + segments.sublist(0, index + 1).join('/');
+
+          // Special case for the root directory path
+          if (index == 2 && segments.sublist(0,3).join('/') == 'storage/emulated/0') {
+            path = '/storage/emulated/0';
+          }
+
+          return Row(
+            children: [
+              // Separator
+              const Icon(Icons.chevron_right, size: 18),
+              // Tappable breadcrumb
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: Theme.of(context).textTheme.titleLarge?.color,
+                ),
+                child: Text(
+                  segments[index],
+                  style: TextStyle(
+                    fontSize: 18,
+                    // The last item (current folder) is bold
+                    fontWeight: index == segments.length - 1 ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                onPressed: () {
+                  // Don't navigate if it's the last item (current folder)
+                  if (index < segments.length - 1) {
+                    controller.loadDirectory(path);
+                  }
+                },
+              ),
+            ],
+          );
+        }),
+      ),
+    );
   }
 
   Widget? _buildFloatingActionButton(
@@ -109,7 +168,6 @@ class BrowseScreen extends ConsumerWidget {
     return null;
   }
 
-  // ref is now passed as a parameter
   Widget _buildBody(
       BuildContext context, BrowseState state, BrowseController controller, WidgetRef ref) {
     if (state.isLoading && state.entities.isEmpty) {
@@ -151,16 +209,10 @@ class BrowseScreen extends ConsumerWidget {
                 }
               }
 
-              void handleItemLongPress() {
-                  controller.toggleSelection(entity.path);
-              }
-              
               void handleOptionsLongPress() {
                 if (!state.isSelectionMode) {
-                  // Pass ref to the options sheet
                   _showOptionsSheet(context, entity, controller, ref);
                 } else {
-                  // Still allow selection toggling on long press in selection mode
                   controller.toggleSelection(entity.path);
                 }
               }
@@ -194,7 +246,6 @@ class BrowseScreen extends ConsumerWidget {
     );
   }
 
-  // ref is now passed as a parameter
   void _showOptionsSheet(BuildContext context, FileSystemEntity entity,
       BrowseController controller, WidgetRef ref) {
     showModalBottomSheet(
@@ -207,7 +258,6 @@ class BrowseScreen extends ConsumerWidget {
               title: const Text('Details'),
               onTap: () {
                 Navigator.pop(context);
-                // Use the passed-in ref here
                 _showDetailsDialog(context, entity, ref.read(fileSystemRepoProvider));
               },
             ),
