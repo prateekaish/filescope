@@ -1,4 +1,5 @@
 import 'package:filescope/core/theme/app_theme.dart';
+import 'package:filescope/features/storage_analysis/presentation/screens/storage_analysis_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,7 +16,7 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           ListTile(
             title: const Text('Theme'),
-            subtitle: const Text('Change the app appearance'),
+            subtitle: Text('Change the app appearance'),
             trailing: DropdownButton<ThemeMode>(
               value: ref.watch(themeProvider),
               items: const [
@@ -31,10 +32,17 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const Divider(),
-          const ListTile(
-            title: Text('Storage Analysis'),
-            subtitle: Text('Coming Soon'),
-            leading: Icon(Icons.pie_chart_outline),
+          ListTile(
+            title: const Text('Storage Analysis'),
+            subtitle: const Text('Visualize what\'s taking up space'),
+            leading: const Icon(Icons.pie_chart_outline),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const StorageAnalysisScreen(),
+                ),
+              );
+            },
           ),
           const ListTile(
             title: Text('Cloud Accounts'),
