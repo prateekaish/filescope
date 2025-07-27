@@ -12,7 +12,6 @@ class BrowseScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Listen for errors to show a SnackBar
     ref.listen<BrowseState>(browseProvider, (previous, next) {
       if (next.error != null && next.error != previous?.error) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -25,7 +24,37 @@ class BrowseScreen extends ConsumerWidget {
     final controller = ref.read(browseProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: _buildAppBar(context, state, controller),
+      body: _buildBody(context, state, controller),
+      floatingActionButton: state.isSelectionMode
+          ? null
+          : FloatingActionButton(
+              onPressed: () => _showCreateFolderDialog(context, controller),
+              child: const Icon(Icons.create_new_folder_outlined),
+            ),
+    );
+  }
+
+  AppBar _buildAppBar(BuildContext context, BrowseState state, BrowseController controller) {
+    if (state.isSelectionMode) {
+      return AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => controller.clearSelection(),
+        ),
+        title: Text('${state.selectedPaths.length} selected'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () {
+              // TODO: Add a confirmation dialog for batch delete
+              controller.deleteSelectedItems();
+            },
+          ),
+        ],
+      );
+    } else {
+      return AppBar(
         title: Text(
           state.currentPath.isEmpty ? 'FileScope' : state.currentPath.split('/').last,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -36,17 +65,10 @@ class BrowseScreen extends ConsumerWidget {
                 onPressed: () => controller.navigateBack(),
               )
             : null,
-      ),
-      body: _buildBody(context, state, controller),
-      // Add the FloatingActionButton for this commit
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateFolderDialog(context, controller),
-        child: const Icon(Icons.create_new_folder_outlined),
-      ),
-    );
+      );
+    }
   }
-  
-  // ... (Existing _buildBody, _showOptionsSheet, _showDetailsDialog, _showRenameDialog, _showDeleteConfirmationDialog methods)
+
   Widget _buildBody(BuildContext context, BrowseState state, BrowseController controller) {
     if (state.isLoading && state.entities.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -66,24 +88,44 @@ class BrowseScreen extends ConsumerWidget {
     }
 
     return RefreshIndicator(
-      onRefresh: () => controller.loadDirectory(state.currentPath),
+      onRefresh: () async {
+        if (!state.isSelectionMode) {
+          await controller.loadDirectory(state.currentPath);
+        }
+      },
       child: Stack(
         children: [
           ListView.builder(
             itemCount: state.entities.length,
             itemBuilder: (context, index) {
               final entity = state.entities[index];
+              final isSelected = state.selectedPaths.contains(entity.path);
+
+              void handleTap() {
+                if (state.isSelectionMode) {
+                  controller.toggleSelection(entity.path);
+                } else {
+                  controller.navigateTo(entity);
+                }
+              }
+
+              void handleLongPress() {
+                controller.toggleSelection(entity.path);
+              }
+
               if (entity.isDirectory) {
                 return FolderListItem(
                   folder: entity,
-                  onTap: () => controller.navigateTo(entity),
-                  onLongPress: () => _showOptionsSheet(context, entity, controller),
+                  isSelected: isSelected,
+                  onTap: handleTap,
+                  onLongPress: handleLongPress,
                 );
               } else {
                 return FileListItem(
                   file: entity,
-                  onTap: () => controller.navigateTo(entity),
-                  onLongPress: () => _showOptionsSheet(context, entity, controller),
+                  isSelected: isSelected,
+                  onTap: handleTap,
+                  onLongPress: handleLongPress,
                 );
               }
             },
@@ -110,7 +152,7 @@ class BrowseScreen extends ConsumerWidget {
               leading: const Icon(Icons.info_outline),
               title: const Text('Details'),
               onTap: () {
-                Navigator.pop(context); // Close the sheet
+                Navigator.pop(context);
                 _showDetailsDialog(context, entity);
               },
             ),
@@ -118,7 +160,7 @@ class BrowseScreen extends ConsumerWidget {
               leading: const Icon(Icons.drive_file_rename_outline),
               title: const Text('Rename'),
               onTap: () {
-                Navigator.pop(context); // Close the sheet
+                Navigator.pop(context);
                 _showRenameDialog(context, entity, controller);
               },
             ),
@@ -126,7 +168,7 @@ class BrowseScreen extends ConsumerWidget {
               leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: const Text('Delete', style: TextStyle(color: Colors.red)),
               onTap: () {
-                Navigator.pop(context); // Close the sheet
+                Navigator.pop(context);
                 _showDeleteConfirmationDialog(context, entity, controller);
               },
             ),
@@ -223,7 +265,6 @@ class BrowseScreen extends ConsumerWidget {
     );
   }
   
-  // New helper method for this commit
   void _showCreateFolderDialog(BuildContext context, BrowseController controller) {
     final textController = TextEditingController();
     showDialog(

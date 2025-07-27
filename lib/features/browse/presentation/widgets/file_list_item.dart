@@ -7,18 +7,23 @@ class FileListItem extends StatelessWidget {
   final FileSystemEntity file;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final bool isSelected;
 
   const FileListItem({
     super.key,
     required this.file,
     required this.onTap,
     required this.onLongPress,
+    required this.isSelected,
   });
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: const Icon(Icons.description_outlined),
+      tileColor: isSelected ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3) : null,
+      leading: isSelected
+          ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
+          : const Icon(Icons.description_outlined),
       title: Text(file.name),
       subtitle: Text(
         '${formatBytes(file.size, 2)} • ${DateFormat.yMMMd().format(file.modified)}',
